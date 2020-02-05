@@ -6,8 +6,10 @@ import androidx.loader.content.CursorLoader;
 import android.accounts.AccountManager;
 import android.app.Activity;
 import android.app.ProgressDialog;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.net.Uri;
@@ -16,6 +18,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.StrictMode;
 import android.provider.MediaStore;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -30,6 +33,7 @@ import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.DriveScopes;
 import com.google.api.services.drive.model.File;
+import com.google.api.services.drive.model.FileList;
 
 import java.io.IOException;
 import java.text.SimpleDateFormat;
@@ -58,16 +62,24 @@ public class MainActivity extends AppCompatActivity {
   private static Uri uriFichero;
   private String idCarpeta = "";
 
-@Override
-public boolean onCreateOptionsMenu(Menu menu) {
-getMenuInflater().inflate(R.menu.menu_drive, menu);
-return true;
-}
+  //para listar agregamos esto
+  static final String DISPLAY_MESSAGE_ACTION = "com.ingwilson.fotodrive2020.DISPLAY_MESSAGE";
+
+  @Override
+  public boolean onCreateOptionsMenu(Menu menu) {
+    getMenuInflater().inflate(R.menu.menu_drive, menu);
+    return true;
+  }
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     setContentView(R.layout.activity_main);
+//para la lista
+    registerReceiver(mHandleMessageReceiver, new
+        IntentFilter(DISPLAY_MESSAGE_ACTION));
+    mDisplay = (TextView) findViewById(R.id.txtDisplay);
+    //hasta aqui
 
     credencial = GoogleAccountCredential.usingOAuth2(this,
         Arrays.asList(DriveScopes.DRIVE));
@@ -80,6 +92,10 @@ return true;
       } else {
         credencial.setSelectedAccountName(nombreCuenta);
         servicio = obtenerServicioDrive(credencial);
+        //agregamos esta condicion
+        if (idCarpeta != null) {
+          listarFicheros(this.findViewById(android.R.id.content));
+        }
       }
     }
     //añadimos esta linea
@@ -265,6 +281,9 @@ return true;
           File ficheroSubido = servicio.files().create(ficheroDrive, contenido).setFields("id").execute();
           if (ficheroSubido.getId() != null) {
             mostrarMensaje(MainActivity.this, "¡Foto subida!");
+            //para listar llamamos
+            listarFicheros(view);
+
           }
           ocultarCarga(MainActivity.this);
         } catch (UserRecoverableAuthIOException e) {
@@ -278,6 +297,63 @@ return true;
       }
     });
     t.start();
+  }
+
+//para listar necesitamos estos metodos
+
+  @Override
+  protected void onNewIntent(Intent intent) {
+    super.onNewIntent(intent);
+    setIntent(intent);
+  }
+  private final BroadcastReceiver mHandleMessageReceiver = new BroadcastReceiver() {
+    @Override
+    public void onReceive(Context context, Intent intent) {
+      String nuevoMensaje = intent.getExtras().getString("mensaje");
+      mDisplay.append(nuevoMensaje + "\n");
+    }
+  };
+  static void mostrarTexto(Context contexto, String mensaje) {
+    Intent intent = new Intent(DISPLAY_MESSAGE_ACTION);
+    intent.putExtra("mensaje", mensaje);
+    contexto.sendBroadcast(intent);
+  }
+
+  public void listarFicheros(View v) {
+    if (nombreCuenta == null) {
+      mostrarMensaje(this,
+          "Debes seleccionar una cuenta de Google Drive");
+    } else {
+      Thread t = new Thread(new Runnable() {
+        @Override
+        public void run() {
+          try {
+            mostrarCarga(MainActivity.this, "Listando archivos...");
+            FileList ficheros = servicio.files().list()
+                .setQ("'" + idCarpeta + "' in parents")
+                .setFields("*")
+                .execute();
+            for (File fichero : ficheros.getFiles()) {
+              mostrarTexto(getBaseContext(), fichero.getOriginalFilename());
+              Log.i("listando","id:"+fichero.getId());
+            }
+            mostrarMensaje(MainActivity.this,
+                "¡Archivos listados!");
+            ocultarCarga(MainActivity.this);
+          } catch (UserRecoverableAuthIOException e) {
+            ocultarCarga(MainActivity.this);
+            startActivityForResult(e.getIntent(),
+                SOLICITUD_AUTORIZACION);
+          } catch (IOException e) {
+            mostrarMensaje(MainActivity.this,
+                "Error;" + e.getMessage());
+            ocultarCarga(MainActivity.this);
+            e.printStackTrace();
+          }
+        }
+      });
+      t.start();
+    }
   }
 
 }
