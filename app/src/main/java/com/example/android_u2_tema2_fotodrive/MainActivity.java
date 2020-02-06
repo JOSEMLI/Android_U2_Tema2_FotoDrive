@@ -2,6 +2,8 @@ package com.example.android_u2_tema2_fotodrive;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.loader.content.CursorLoader;
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import android.accounts.AccountManager;
 import android.app.Activity;
@@ -22,6 +24,7 @@ import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -37,6 +40,7 @@ import com.google.api.services.drive.model.FileList;
 
 import java.io.IOException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
@@ -61,6 +65,13 @@ public class MainActivity extends AppCompatActivity {
   static final int SOLICITUD_HACER_FOTOGRAFIA = 4;
   private static Uri uriFichero;
   private String idCarpeta = "";
+
+  //para el recycler de imagenes
+  private ImageView imageView;
+  RecyclerView recyclerView;
+  GridLayoutManager gridLayoutManager;
+  ArrayList<ImageUrl> imageUrlList;
+  DataAdapter dataAdapter;
 
   //para listar agregamos esto
   static final String DISPLAY_MESSAGE_ACTION = "com.ingwilson.fotodrive2020.DISPLAY_MESSAGE";
@@ -103,6 +114,15 @@ public class MainActivity extends AppCompatActivity {
 
     StrictMode.VmPolicy.Builder builder = new StrictMode.VmPolicy.Builder();
     StrictMode.setVmPolicy(builder.build());
+//se agrega para la imagen
+    imageUrlList=new ArrayList<>();
+    imageView = (ImageView) findViewById(R.id.imageView);
+    recyclerView = (RecyclerView) findViewById(R.id.recycler_view);
+    gridLayoutManager = new GridLayoutManager(getApplicationContext(), 2);
+    recyclerView.setLayoutManager(gridLayoutManager);
+    dataAdapter = new DataAdapter(getApplicationContext(), imageUrlList);
+    recyclerView.setAdapter(dataAdapter);
+
 
   }
 
@@ -283,6 +303,15 @@ public class MainActivity extends AppCompatActivity {
             mostrarMensaje(MainActivity.this, "¡Foto subida!");
             //para listar llamamos
             listarFicheros(view);
+            //para la imagen
+            runOnUiThread(new Runnable()
+            {
+              @Override
+              public void run()
+              {
+                dataAdapter.update(imageUrlList);
+              }
+            });
 
           }
           ocultarCarga(MainActivity.this);
@@ -310,7 +339,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onReceive(Context context, Intent intent) {
       String nuevoMensaje = intent.getExtras().getString("mensaje");
-      mDisplay.append(nuevoMensaje + "\n");
+      //se reemplaza para la imagen
+      //mDisplay.append(nuevoMensaje + "\n");
+      mDisplay.setText(nuevoMensaje);
     }
   };
   static void mostrarTexto(Context contexto, String mensaje) {
@@ -327,20 +358,41 @@ public class MainActivity extends AppCompatActivity {
       Thread t = new Thread(new Runnable() {
         @Override
         public void run() {
+//          try {
+//            mostrarCarga(MainActivity.this, "Listando archivos...");
+//            FileList ficheros = servicio.files().list()
+//                .setQ("'" + idCarpeta + "' in parents")
+//                .setFields("*")
+//                .execute();
+//            for (File fichero : ficheros.getFiles()) {
+//              mostrarTexto(getBaseContext(), fichero.getOriginalFilename());
+//              Log.i("listando","id:"+fichero.getId());
+//            }
+//            mostrarMensaje(MainActivity.this,
+//                "¡Archivos listados!");
+//            ocultarCarga(MainActivity.this);
+//          }
+//SE REEMPLAZA para que no nos liste doble
           try {
             mostrarCarga(MainActivity.this, "Listando archivos...");
             FileList ficheros = servicio.files().list()
                 .setQ("'" + idCarpeta + "' in parents")
                 .setFields("*")
                 .execute();
+            imageUrlList.clear();
+            String mimensaje="";
             for (File fichero : ficheros.getFiles()) {
-              mostrarTexto(getBaseContext(), fichero.getOriginalFilename());
+              mimensaje=mimensaje+fichero.getOriginalFilename() + "\n";
               Log.i("listando","id:"+fichero.getId());
+              ImageUrl imageUrl = new ImageUrl("https://drive.google.com/uc?export=download&id="+fichero.getId());
+              imageUrlList.add(imageUrl);
             }
+            mostrarTexto(getBaseContext(), mimensaje);
             mostrarMensaje(MainActivity.this,
                 "¡Archivos listados!");
             ocultarCarga(MainActivity.this);
-          } catch (UserRecoverableAuthIOException e) {
+          }
+          catch (UserRecoverableAuthIOException e) {
             ocultarCarga(MainActivity.this);
             startActivityForResult(e.getIntent(),
                 SOLICITUD_AUTORIZACION);
